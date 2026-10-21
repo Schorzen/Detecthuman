@@ -5,62 +5,63 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Schorzen Project</title>
 <style>
-  :root {
-    --bg: #101418;
-    --ink: #e9efe6;
-    --muted: #8d9a93;
-    --line: #c8ff3d;
-    --pet: #ff8a3d;
-    --panel: #181e24;
-  }
+  :root { --bg:#0e1216; --ink:#e9efe6; --muted:#8d9a93; --accent:#c8ff3d; --panel:#171d23; --edge:#28323b; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; background: var(--bg); color: var(--ink);
-    font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif; }
-  body { min-height: 100vh; display: flex; flex-direction: column; align-items: center;
-    padding: max(16px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom)); }
-  header { text-align: center; margin: 8px 0 14px; }
-  h1 { margin: 0; font-size: clamp(1.8rem, 6vw, 3rem); letter-spacing: .02em; font-weight: 700; }
-  #author { margin: 4px 0 0; color: var(--muted); font-size: 1rem; }
-  #stage { position: relative; width: 100%; max-width: 900px; background: #000;
-    border-radius: 14px; overflow: hidden; aspect-ratio: 4 / 3; border: 1px solid #28323b; }
-  video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-  video { object-fit: fill; }
-  #stage.mirror video, #stage.mirror canvas { transform: scaleX(-1); }
-  #overlay { position: absolute; inset: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 12px; text-align: center;
-    padding: 20px; background: var(--panel); }
-  #overlay p { margin: 0; color: var(--muted); max-width: 32ch; line-height: 1.45; }
-  button { font: inherit; font-weight: 700; border: 0; border-radius: 10px; cursor: pointer;
-    padding: 12px 22px; background: var(--line); color: #14200a; }
-  button.alt { background: #26313a; color: var(--ink); }
-  button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
-  #bar { display: flex; gap: 10px; align-items: center; justify-content: space-between;
-    width: 100%; max-width: 900px; margin-top: 12px; }
-  #status { color: var(--muted); font-size: .92rem; }
-  #bar button { padding: 9px 16px; }
-  footer { margin-top: auto; padding-top: 18px; color: var(--muted); font-size: .85rem; }
+  html, body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif; }
+  body { min-height:100vh; display:flex; flex-direction:column; align-items:center;
+    padding:max(14px,env(safe-area-inset-top)) 12px max(14px,env(safe-area-inset-bottom)); }
+  header { text-align:center; margin:6px 0 12px; }
+  h1 { margin:0; font-size:clamp(1.8rem,6vw,3rem); font-weight:700; letter-spacing:.02em; }
+  #author { margin:4px 0 0; color:var(--muted); }
+  #stage { position:relative; width:100%; max-width:920px; aspect-ratio:4/3; background:#000;
+    border:1px solid var(--edge); border-radius:14px; overflow:hidden; }
+  video, canvas { position:absolute; inset:0; width:100%; height:100%; }
+  #stage.mirror video { transform:scaleX(-1); }
+  #stage.sticks video { opacity:0; }
+  #overlay { position:absolute; inset:0; z-index:3; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:12px; text-align:center; padding:20px; background:var(--panel); }
+  #overlay p { margin:0; color:var(--muted); max-width:34ch; line-height:1.45; }
+  #hud { position:absolute; left:10px; top:10px; z-index:2; display:flex; gap:6px; flex-wrap:wrap; }
+  .chip { background:rgba(10,14,18,.72); border:1px solid var(--edge); border-radius:20px;
+    padding:4px 11px; font-size:.82rem; }
+  button { font:inherit; font-weight:700; border:0; border-radius:10px; cursor:pointer;
+    padding:11px 20px; background:var(--accent); color:#14200a; }
+  button.alt { background:#26313a; color:var(--ink); padding:9px 14px; font-weight:600; }
+  button.alt[aria-pressed="true"] { background:#3b4a2a; outline:1px solid var(--accent); }
+  button:focus-visible { outline:3px solid #fff; outline-offset:2px; }
+  #bar { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; width:100%; max-width:920px; margin-top:12px; }
+  #stage.ghost video { filter:grayscale(.75) contrast(1.2) brightness(1.15) hue-rotate(170deg) saturate(.7); }
+  #stage.ghost::after { content:""; position:absolute; inset:0; z-index:1; pointer-events:none;
+    background:radial-gradient(ellipse at center,transparent 40%,rgba(0,0,0,.7) 100%),
+    repeating-linear-gradient(0deg,rgba(255,255,255,.035) 0 1px,transparent 1px 3px); }
+  footer { margin-top:auto; padding-top:16px; color:var(--muted); font-size:.82rem; text-align:center; }
 </style>
 </head>
 <body>
 <header>
   <h1>Schorzen Project</h1>
-  <p id="author">Your Name</p>
+  <p id="author"></p>
 </header>
 
 <div id="stage">
   <video id="video" playsinline muted></video>
   <canvas id="canvas"></canvas>
+  <div id="hud" hidden><span class="chip" id="cHuman">0 humans</span><span class="chip" id="cAnimal">0 animals</span><span class="chip" id="cFps">0 fps</span><span class="chip" id="cEmf" hidden>EMF 0.0</span></div>
   <div id="overlay">
-    <p>Point your camera at people or animals. They are drawn as stick figures instead of boxes.</p>
+    <p id="msg">Point your camera at people or animals. They are drawn as stick figures instead of boxes.</p>
     <button id="start">Open camera</button>
   </div>
 </div>
 
 <div id="bar" hidden>
-  <span id="status">Loading models…</span>
-  <button id="flip" class="alt">Switch camera</button>
+  <button class="alt" id="flip">Switch camera</button>
+  <button class="alt" id="sticksBtn" aria-pressed="false">Sticks only</button>
+  <button class="alt" id="pauseBtn" aria-pressed="false">Pause</button>
+  <button class="alt" id="ghostBtn" aria-pressed="false">Ghost mode</button>
+  <button class="alt" id="snap">Save photo</button>
 </div>
-<footer>Everything runs in your browser. No video leaves your device.</footer>
+<footer>Runs fully in your browser. No video leaves your device.</footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js"></script>
@@ -68,132 +69,261 @@
 <script>
 // ---- Change your name here ----
 const AUTHOR = "Your Name";
-document.getElementById("author").textContent = AUTHOR;
+function $(id){ return document.getElementById(id); }
+$("author").textContent = AUTHOR;
 
-const $ = id => document.getElementById(id);
-const video = $("video"), canvas = $("canvas"), ctx = canvas.getContext("2d");
-const stage = $("stage"), statusEl = $("status");
+const video=$("video"), canvas=$("canvas"), ctx=canvas.getContext("2d"), stage=$("stage");
 const ANIMALS = new Set(["bird","cat","dog","horse","sheep","cow","elephant","bear","zebra","giraffe"]);
-let facing = "environment", stream = null, poseNet = null, objNet = null;
-let pairs = [], animals = [], frame = 0, running = false;
+let facing="environment", stream=null, poseNet=null, objNet=null, pairs=[];
+let running=false, paused=false, frame=0, lastT=performance.now(), fps=0;
+const humanSmooth = new Map();   // id -> {kp:[{x,y,s}], seen}
+let tracks = [], nextTrack = 1;  // animal tracks
+const mirror = () => stage.classList.contains("mirror");
 
-async function startCamera() {
-  if (stream) stream.getTracks().forEach(t => t.stop());
+/* ---------- camera ---------- */
+async function startCamera(){
+  if (stream) stream.getTracks().forEach(t=>t.stop());
   stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: facing, width: { ideal: 960 }, height: { ideal: 720 } }, audio: false
-  });
-  video.srcObject = stream;
-  await video.play();
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  stage.style.aspectRatio = video.videoWidth + " / " + video.videoHeight;
-  stage.classList.toggle("mirror", facing === "user");
+    video:{ facingMode:facing, width:{ideal:960}, height:{ideal:720} }, audio:false });
+  video.srcObject = stream; await video.play();
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  stage.style.aspectRatio = video.videoWidth+" / "+video.videoHeight;
+  stage.classList.toggle("mirror", facing==="user");
+  humanSmooth.clear(); tracks=[];
 }
-
-async function loadModels() {
+async function loadModels(){
   await tf.ready();
-  poseNet = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, {
-    modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING,
-    enableTracking: true
-  });
+  poseNet = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet,
+    { modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING, enableTracking:true });
   pairs = poseDetection.util.getAdjacentPairs(poseDetection.SupportedModels.MoveNet);
-  objNet = await cocoSsd.load({ base: "lite_mobilenet_v2" });
+  objNet = await cocoSsd.load({ base:"mobilenet_v2" });
 }
 
 $("start").onclick = async () => {
-  $("start").disabled = true;
-  $("start").textContent = "Starting…";
+  const b=$("start"); b.disabled=true; b.textContent="Starting camera…";
   try {
     facing = /Mobi|Android/i.test(navigator.userAgent) ? "environment" : "user";
     await startCamera();
-    $("overlay").hidden = true;
-    $("overlay").style.display = "none";
-    $("bar").hidden = false;
+    b.textContent="Loading models…";
     await loadModels();
-    running = true;
-    loop();
-  } catch (e) {
-    $("start").disabled = false;
-    $("start").textContent = "Try again";
-    $("overlay").querySelector("p").textContent =
-      "Camera could not start. Allow camera access in your browser and open the page over https.";
-    $("overlay").style.display = "flex";
+    $("overlay").style.display="none"; $("hud").hidden=false; $("bar").hidden=false;
+    if (navigator.wakeLock) navigator.wakeLock.request("screen").catch(()=>{});
+    running=true; loop();
+  } catch(e){
     console.error(e);
+    b.disabled=false; b.textContent="Try again";
+    $("msg").textContent = "Could not start. Allow camera access and open this page over https.";
   }
 };
-
-$("flip").onclick = async () => {
-  facing = facing === "user" ? "environment" : "user";
-  try { await startCamera(); } catch (e) { console.error(e); }
+$("flip").onclick = async()=>{ facing = facing==="user"?"environment":"user"; try{ await startCamera(); }catch(e){console.error(e);} };
+$("sticksBtn").onclick = e=>{ const on=stage.classList.toggle("sticks"); e.target.setAttribute("aria-pressed",on); };
+$("pauseBtn").onclick = e=>{ paused=!paused; e.target.setAttribute("aria-pressed",paused); e.target.textContent=paused?"Resume":"Pause"; paused?video.pause():video.play(); };
+$("snap").onclick = ()=>{
+  const c=document.createElement("canvas"); c.width=canvas.width; c.height=canvas.height;
+  const g=c.getContext("2d"); g.fillStyle="#000"; g.fillRect(0,0,c.width,c.height);
+  if(!stage.classList.contains("sticks")){
+    g.save(); if(mirror()){ g.translate(c.width,0); g.scale(-1,1); }
+    g.drawImage(video,0,0,c.width,c.height); g.restore();
+  }
+  g.drawImage(canvas,0,0);
+  g.fillStyle="rgba(255,255,255,.85)"; g.font="bold "+Math.round(c.width/38)+"px sans-serif";
+  g.fillText("Schorzen Project — "+AUTHOR, 14, c.height-16);
+  const a=document.createElement("a"); a.download="schorzen-"+Date.now()+".png"; a.href=c.toDataURL("image/png"); a.click();
 };
 
-function stroke(color, w) {
-  ctx.strokeStyle = color; ctx.fillStyle = color;
-  ctx.lineWidth = w; ctx.lineCap = "round"; ctx.lineJoin = "round";
-}
-function line(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+/* ---------- drawing helpers (mirror handled in canvas, so text stays readable) ---------- */
+const W=()=>canvas.width, mx = x => mirror()? W()-x : x;
+function style(color,w){ ctx.strokeStyle=color; ctx.fillStyle=color; ctx.lineWidth=w; ctx.lineCap="round"; ctx.lineJoin="round";
+  ctx.shadowColor=color; ctx.shadowBlur=w*2.5; }
+function seg(x1,y1,x2,y2){ ctx.beginPath(); ctx.moveTo(mx(x1),y1); ctx.lineTo(mx(x2),y2); ctx.stroke(); }
+function poly(pts){ ctx.beginPath(); pts.forEach((p,i)=> i?ctx.lineTo(mx(p[0]),p[1]):ctx.moveTo(mx(p[0]),p[1])); ctx.stroke(); }
+function circ(x,y,r,fill){ ctx.beginPath(); ctx.arc(mx(x),y,r,0,Math.PI*2); fill?ctx.fill():ctx.stroke(); }
+function label(t,x,y,color){ ctx.save(); ctx.shadowBlur=0; ctx.fillStyle=color;
+  ctx.font="bold "+Math.max(13,W()/48)+"px sans-serif"; ctx.textAlign="center"; ctx.fillText(t,mx(x),y); ctx.restore(); }
 
-function drawHuman(p) {
-  const k = p.keypoints, ok = i => k[i] && k[i].score > 0.25;
-  stroke("#c8ff3d", Math.max(3, canvas.width / 200));
-  for (const [a, b] of pairs) {
-    if (ok(a) && ok(b)) line(k[a].x, k[a].y, k[b].x, k[b].y);
+/* ---------- humans ---------- */
+function smoothHuman(p,idx){
+  const id = p.id ?? ("i"+idx);
+  let s = humanSmooth.get(id);
+  if(!s){ s={kp:p.keypoints.map(k=>({x:k.x,y:k.y,s:k.score})),seen:0}; humanSmooth.set(id,s); }
+  p.keypoints.forEach((k,i)=>{ const o=s.kp[i], a=0.6; o.x+=(k.x-o.x)*a; o.y+=(k.y-o.y)*a; o.s=k.score; });
+  s.seen=frame; s.id=id; return s;
+}
+function drawHuman(s){
+  const k=s.kp, ok=i=>k[i].s>0.3;
+  const hue = (typeof s.id==="number" ? s.id*67 : 90) % 360;
+  const color = "hsl("+(hue+80)%360+",100%,62%)";
+  const lw = Math.max(3,W()/190);
+  style(color,lw);
+  for(const [a,b] of pairs) if(ok(a)&&ok(b)) seg(k[a].x,k[a].y,k[b].x,k[b].y);
+  if(ok(5)&&ok(6)&&ok(11)&&ok(12))
+    seg((k[5].x+k[6].x)/2,(k[5].y+k[6].y)/2,(k[11].x+k[12].x)/2,(k[11].y+k[12].y)/2);
+  if(ok(0)){
+    let r=W()/45;
+    if(ok(3)&&ok(4)) r=Math.hypot(k[3].x-k[4].x,k[3].y-k[4].y)*0.85;
+    else if(ok(5)&&ok(6)) r=Math.hypot(k[5].x-k[6].x,k[5].y-k[6].y)*0.28;
+    const cy = k[0].y - r*0.15;
+    circ(k[0].x,cy,Math.max(r,10),false);
+    if(ok(5)&&ok(6)) seg(k[0].x,cy+Math.max(r,10),(k[5].x+k[6].x)/2,(k[5].y+k[6].y)/2); // neck
   }
-  // torso spine: shoulders midpoint to hips midpoint
-  if (ok(5) && ok(6) && ok(11) && ok(12)) {
-    line((k[5].x + k[6].x) / 2, (k[5].y + k[6].y) / 2, (k[11].x + k[12].x) / 2, (k[11].y + k[12].y) / 2);
-  }
-  // head circle
-  if (ok(0)) {
-    let r = 18;
-    if (ok(3) && ok(4)) r = Math.hypot(k[3].x - k[4].x, k[3].y - k[4].y) * 0.9;
-    else if (ok(5) && ok(6)) r = Math.hypot(k[5].x - k[6].x, k[5].y - k[6].y) * 0.3;
-    ctx.beginPath(); ctx.arc(k[0].x, k[0].y, Math.max(r, 10), 0, Math.PI * 2); ctx.stroke();
-  }
-  for (const pt of k) if (pt.score > 0.25) { ctx.beginPath(); ctx.arc(pt.x, pt.y, 4, 0, 7); ctx.fill(); }
+  [9,10,15,16].forEach(i=>{ if(ok(i)) circ(k[i].x,k[i].y,lw*1.3,true); });
+  if(ok(0)) label("human",k[0].x,k[0].y-W()/14,color);
 }
 
-function drawAnimal(a) {
-  const [x, y, w, h] = a.bbox, c = a.class;
-  const lw = Math.max(3, canvas.width / 200);
-  stroke("#ff8a3d", lw);
-  const bird = c === "bird", tall = c === "giraffe";
-  const bx1 = x + w * 0.18, bx2 = x + w * 0.78, by = y + h * (bird ? 0.5 : 0.45);
-  line(bx1, by, bx2, by);                                   // spine
-  const hx = x + w * (tall ? 0.9 : 0.92), hy = y + h * (tall ? 0.08 : 0.25);
-  line(bx2, by, hx, hy);                                    // neck
-  ctx.beginPath(); ctx.arc(hx, hy, Math.max(8, Math.min(w, h) * 0.07), 0, 7); ctx.stroke(); // head
-  line(bx1, by, x + w * 0.02, by - h * 0.12);               // tail
-  const foot = y + h;
-  if (bird) {
-    line(x + w * 0.45, by, x + w * 0.45, foot);
-    line(x + w * 0.55, by, x + w * 0.55, foot);
-    line(x + w * 0.4, by, x + w * 0.62, by - h * 0.2);      // wing
+/* ---------- animals: tracking + stick skeleton ---------- */
+const PROFILE = { // b=body height ratio, n=neck reach, h=head height ratio, hr=head radius, legs, ear, tail
+  dog:{b:.5,n:.22,h:.2,hr:.07,ear:1,tail:.12}, cat:{b:.55,n:.16,h:.22,hr:.08,ear:2,tail:.3},
+  horse:{b:.42,n:.2,h:.1,hr:.06,ear:1,tail:.2}, cow:{b:.42,n:.18,h:.3,hr:.07,ear:1,tail:.15},
+  sheep:{b:.45,n:.15,h:.3,hr:.07,ear:1,tail:.06}, zebra:{b:.42,n:.2,h:.12,hr:.06,ear:1,tail:.18},
+  bear:{b:.45,n:.17,h:.25,hr:.08,ear:1,tail:.04}, elephant:{b:.4,n:.2,h:.28,hr:.1,ear:0,tail:.12,trunk:1},
+  giraffe:{b:.5,n:.08,h:.04,hr:.04,ear:1,tail:.1}, bird:{b:.5,n:.14,h:.28,hr:.1,ear:0,tail:.2,bird:1}
+};
+function iou(a,b){ const x1=Math.max(a[0],b[0]),y1=Math.max(a[1],b[1]),x2=Math.min(a[0]+a[2],b[0]+b[2]),y2=Math.min(a[1]+a[3],b[1]+b[3]);
+  const i=Math.max(0,x2-x1)*Math.max(0,y2-y1); return i/(a[2]*a[3]+b[2]*b[3]-i+1e-6); }
+function updateTracks(dets){
+  const used=new Set();
+  for(const t of tracks){
+    let best=null,bs=0.15;
+    dets.forEach((d,i)=>{ if(used.has(i)||d.class!==t.cls) return; const s=iou(t.box,d.bbox); if(s>bs){bs=s;best=i;} });
+    if(best===null){ t.miss++; continue; }
+    used.add(best); const d=dets[best].bbox, a=0.55;
+    const ocx=t.box[0]+t.box[2]/2;
+    for(let i=0;i<4;i++) t.box[i]+=(d[i]-t.box[i])*a;
+    const dx=(t.box[0]+t.box[2]/2)-ocx; t.vx=t.vx*0.7+dx*0.3; t.miss=0; t.hits++;
+    if(Math.abs(t.vx)>1.2) t.dir = t.vx>0?1:-1;
+  }
+  dets.forEach((d,i)=>{ if(!used.has(i)) tracks.push({id:nextTrack++,cls:d.class,box:[...d.bbox],vx:0,dir:1,hits:1,miss:0,phase:Math.random()*6}); });
+  tracks = tracks.filter(t=>t.miss<4);
+}
+function drawAnimal(t,now){
+  const [x,y,w,h]=t.box, P=PROFILE[t.cls], f=t.dir, lw=Math.max(3,W()/190);
+  const color="#ff9a3d"; style(color,lw);
+  const by=y+h*P.b, rear=f>0?x+w*.14:x+w*.86, front=f>0?x+w*.72:x+w*.28;
+  const moving=Math.abs(t.vx)>1.2, sw=moving?Math.sin(now/110+t.phase)*w*.05:0;
+  // spine with slight arch
+  poly([[rear,by+h*.02],[(rear+front)/2,by-h*.03],[front,by]]);
+  // neck + head
+  const hx=front+f*w*P.n, hy=y+h*P.h+P.hr*h;
+  seg(front,by,hx,hy);
+  const r=Math.max(7,Math.min(w,h)*P.hr*1.2);
+  circ(hx,hy,r,false);
+  if(P.ear){ seg(hx,hy-r,hx-f*r*.3,hy-r*1.9); if(P.ear===2) seg(hx+f*r*.5,hy-r*.8,hx+f*r*.8,hy-r*1.7); }
+  if(P.trunk) poly([[hx+f*r,hy+r*.3],[hx+f*r*1.5,hy+r*2],[hx+f*r*.8,hy+r*3.4]]);
+  // tail
+  seg(rear,by+h*.02,rear-f*w*.1,by-h*P.tail);
+  const foot=y+h;
+  if(P.bird){
+    poly([[(rear+front)/2,by],[(rear+front)/2+sw,foot]]);
+    poly([[(rear+front)/2-f*w*.05,by],[(rear+front)/2-f*w*.05-sw,foot]]);
+    poly([[rear+f*w*.1,by-h*.02],[rear-f*w*.1,by-h*.3]]); // wing
   } else {
-    for (const lx of [bx1, bx1 + w * 0.1, bx2 - w * 0.1, bx2]) line(lx, by, lx, foot); // legs
+    const legs=[[front,sw],[front-f*w*.08,-sw],[rear,-sw],[rear+f*w*.08,sw]];
+    for(const [lx,s] of legs){ const kx=lx+s*.5, ky=(by+foot)/2;
+      poly([[lx,by],[kx-f*w*.02,ky],[lx+s,foot]]); circ(lx+s,foot,lw*.9,true); }
   }
-  ctx.font = "bold " + Math.max(14, canvas.width / 45) + "px sans-serif";
-  ctx.fillText(c, x + 4, Math.max(16, y - 6));
+  [[rear,by+h*.02],[front,by]].forEach(p=>circ(p[0],p[1],lw*1.2,true));
+  label(t.cls,x+w/2,Math.max(16,y-8),color);
 }
 
-async function loop() {
-  if (!running) return;
-  if (video.readyState >= 2) {
-    try {
-      const poses = await poseNet.estimatePoses(video, { maxPoses: 6, flipHorizontal: false });
-      if (frame++ % 4 === 0) {
-        const objs = await objNet.detect(video, 10, 0.5);
-        animals = objs.filter(o => ANIMALS.has(o.class));
-      }
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const people = poses.filter(p => p.score === undefined || p.score > 0.2);
-      people.forEach(drawHuman);
-      animals.forEach(drawAnimal);
-      if (stage.classList.contains("mirror")) { /* canvas is mirrored by CSS with the video */ }
-      statusEl.textContent = people.length + " human" + (people.length === 1 ? "" : "s") +
-        ", " + animals.length + " animal" + (animals.length === 1 ? "" : "s");
-    } catch (e) { console.error(e); }
+/* ---------- ghost mode: flags unexplained motion (entertainment only) ---------- */
+let ghostOn=false, prevG=null, ghosts=[], nextGhost=1, emf=0;
+const GW=48, GH=36, mc=document.createElement("canvas"); mc.width=GW; mc.height=GH;
+const mctx=mc.getContext("2d",{willReadFrequently:true});
+$("ghostBtn").onclick = e=>{ ghostOn=!ghostOn; stage.classList.toggle("ghost",ghostOn);
+  e.target.setAttribute("aria-pressed",ghostOn); $("cEmf").hidden=!ghostOn; prevG=null; ghosts=[]; };
+
+function motionBlobs(){
+  mctx.drawImage(video,0,0,GW,GH);
+  const d=mctx.getImageData(0,0,GW,GH).data, n=GW*GH, g=new Float32Array(n);
+  for(let i=0;i<n;i++) g[i]=.3*d[i*4]+.59*d[i*4+1]+.11*d[i*4+2];
+  if(!prevG){ prevG=g; return []; }
+  const m=new Uint8Array(n); let moved=0;
+  for(let i=0;i<n;i++){ if(Math.abs(g[i]-prevG[i])>16){ m[i]=1; moved++; } prevG[i]=prevG[i]*.5+g[i]*.5; }
+  if(moved>n*.4) return [];                       // camera itself is moving
+  const out=[], sx=canvas.width/GW, sy=canvas.height/GH;
+  for(let s=0;s<n;s++){ if(m[s]!==1) continue;
+    const st=[s]; m[s]=2; let c=0,x0=GW,y0=GH,x1=0,y1=0;
+    while(st.length){ const p=st.pop(), x=p%GW, y=(p/GW)|0; c++;
+      x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y);
+      for(const q of [p-1,p+1,p-GW,p+GW]) if(q>=0&&q<n&&m[q]===1&&Math.abs((q%GW)-x)<=1){ m[q]=2; st.push(q); } }
+    if(c>=7) out.push({x:(x0+x1+1)/2*sx,y:(y0+y1+1)/2*sy,w:(x1-x0+1)*sx,h:(y1-y0+1)*sy}); }
+  return out;
+}
+function knownRects(people,animals){
+  const r=[];
+  for(const s of people){ const k=s.kp.filter(p=>p.s>.3); if(k.length<3) continue;
+    const xs=k.map(p=>p.x), ys=k.map(p=>p.y), x0=Math.min(...xs), x1=Math.max(...xs), y0=Math.min(...ys), y1=Math.max(...ys);
+    const px=(x1-x0)*.25, py=(y1-y0)*.25; r.push([x0-px,y0-py,x1+px,y1+py]); }
+  for(const t of animals){ const [x,y,w,h]=t.box; r.push([x-w*.15,y-h*.15,x+w*1.15,y+h*1.15]); }
+  return r;
+}
+function ghostStep(people,animals,now){
+  const known=knownRects(people,animals);
+  const blobs=motionBlobs().filter(b=>!known.some(r=>b.x>r[0]&&b.x<r[2]&&b.y>r[1]&&b.y<r[3]));
+  for(const g of ghosts) g.seen=false;
+  for(const b of blobs){
+    let best=null,bd=Math.max(b.w,b.h)*1.2;
+    for(const g of ghosts){ const dd=Math.hypot(g.x-b.x,g.y-b.y); if(dd<bd){bd=dd;best=g;} }
+    if(best){ best.trail.push([best.x,best.y]); if(best.trail.length>14) best.trail.shift();
+      best.x+=(b.x-best.x)*.35; best.y+=(b.y-best.y)*.35; best.w+=(b.w-best.w)*.3; best.h+=(b.h-best.h)*.3;
+      best.age++; best.life=14; best.seen=true; }
+    else ghosts.push({id:nextGhost++,x:b.x,y:b.y,w:b.w,h:b.h,age:1,life:14,trail:[],seen:true,conf:30+Math.floor(Math.random()*60)});
   }
+  for(const g of ghosts) if(!g.seen) g.life--;
+  ghosts=ghosts.filter(g=>g.life>0).slice(-5);
+  let power=0;
+  for(const g of ghosts){
+    if(g.age<8) continue;                            // must persist before it "appears"
+    const a=Math.min(1,(g.age-7)/18)*Math.min(1,g.life/8)*(.75+.25*Math.sin(now/90+g.id));
+    power+=a; drawGhost(g,a,now);
+  }
+  emf += ((power? 2+power*3+Math.random()*1.4 : .1+Math.random()*.3) - emf)*.2;
+  $("cEmf").textContent="EMF "+emf.toFixed(1);
+}
+function drawGhost(g,a,now){
+  const hh=Math.min(canvas.height*.55,Math.max(canvas.height*.18,g.h*1.4)), ww=hh*.55;
+  const cx=g.x+Math.sin(now/600+g.id)*ww*.05, top=g.y-hh/2;
+  ctx.save(); ctx.shadowBlur=0;
+  g.trail.forEach((p,i)=>{ ctx.globalAlpha=a*.05*(i+1)/g.trail.length;     // fading trail
+    ctx.fillStyle="#bfe4ff"; ctx.beginPath(); ctx.ellipse(mx(p[0]),p[1],ww*.3,hh*.4,0,0,7); ctx.fill(); });
+  ctx.globalAlpha=a*.85; ctx.shadowColor="#9fd8ff"; ctx.shadowBlur=30;
+  const gr=ctx.createLinearGradient(0,top,0,top+hh);
+  gr.addColorStop(0,"rgba(235,248,255,.8)"); gr.addColorStop(.6,"rgba(190,225,255,.4)"); gr.addColorStop(1,"rgba(190,225,255,0)");
+  ctx.fillStyle=gr; ctx.beginPath();
+  ctx.moveTo(mx(cx-ww*.5),top+hh*.38);
+  ctx.bezierCurveTo(mx(cx-ww*.5),top-hh*.04,mx(cx+ww*.5),top-hh*.04,mx(cx+ww*.5),top+hh*.38);
+  for(let i=0;i<=8;i++){ const x=cx+ww*.5-ww*i/8; ctx.lineTo(mx(x),top+hh+Math.sin(now/220+i*1.3+g.id)*hh*.045); }
+  ctx.closePath(); ctx.fill();
+  ctx.shadowBlur=0; ctx.fillStyle="rgba(5,12,20,.8)";                        // hollow eyes + mouth
+  const ey=top+hh*.2, er=ww*.07;
+  ctx.beginPath(); ctx.ellipse(mx(cx-ww*.15),ey,er,er*1.5,0,0,7); ctx.ellipse(mx(cx+ww*.15),ey,er,er*1.5,0,0,7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(mx(cx),ey+hh*.1,er*.8,er*1.8*(1+.4*Math.sin(now/300)),0,0,7); ctx.fill();
+  ctx.restore();
+  ctx.save(); ctx.globalAlpha=a; label("UNKNOWN ENTITY "+g.conf+"%",cx,Math.max(18,top-8),"#bfe4ff"); ctx.restore();
+}
+
+/* ---------- main loop ---------- */
+async function loop(){
+  if(!running) return;
+  const now=performance.now();
+  if(!paused && video.readyState>=2){
+    try{
+      const poses = await poseNet.estimatePoses(video,{maxPoses:6,flipHorizontal:false});
+      if(frame%3===0){ const o=await objNet.detect(video,12,0.45); updateTracks(o.filter(d=>ANIMALS.has(d.class))); }
+      frame++;
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      const people=poses.filter(p=>(p.score??1)>0.2).map(smoothHuman);
+      people.forEach(drawHuman);
+      for(const [id,s] of humanSmooth) if(frame-s.seen>8) humanSmooth.delete(id);
+      const vis=tracks.filter(t=>t.hits>=2&&t.miss<2);
+      vis.forEach(t=>drawAnimal(t,now));
+      if(ghostOn) ghostStep(people,vis,now);
+      $("cHuman").textContent=people.length+(people.length===1?" human":" humans");
+      $("cAnimal").textContent=vis.length+(vis.length===1?" animal":" animals");
+    }catch(e){ console.error(e); }
+  }
+  fps = fps*0.9 + (1000/Math.max(1,now-lastT))*0.1; lastT=now;
+  $("cFps").textContent=Math.round(fps)+" fps";
   requestAnimationFrame(loop);
 }
 </script>
