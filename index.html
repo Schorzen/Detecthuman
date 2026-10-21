@@ -36,6 +36,16 @@
   button.alt[aria-pressed="true"] { background:#3b4a2a; outline:1px solid var(--accent); }
   button:focus-visible { outline:3px solid #fff; outline-offset:2px; }
   #bar { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; width:100%; max-width:920px; margin-top:12px; }
+  #chat { width:100%; max-width:920px; margin-top:12px; background:var(--panel); border:1px solid var(--edge); border-radius:14px; padding:12px; }
+  #chatTop { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  #chatTop b { margin-right:auto; }
+  #chat select, #chat input[type=text] { font:inherit; background:#0e1216; color:var(--ink); border:1px solid var(--edge); border-radius:8px; padding:8px 10px; }
+  #aiProg { color:var(--muted); font-size:.8rem; margin:8px 0; min-height:1.1em; word-break:break-word; }
+  #chatLog { height:190px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; margin-bottom:8px; }
+  .msg { max-width:85%; padding:8px 11px; border-radius:12px; line-height:1.4; font-size:.95rem; white-space:pre-wrap; }
+  .msg.me { align-self:flex-end; background:#2d3b1f; }
+  .msg.ai { align-self:flex-start; background:#222c34; }
+  #chatRow { display:flex; gap:8px; } #chatIn { flex:1; }
   footer { margin-top:auto; padding-top:16px; color:var(--muted); font-size:.82rem; text-align:center; }
 </style>
 </head>
@@ -49,7 +59,7 @@
   <video id="video" playsinline muted></video>
   <canvas id="fx"></canvas>
   <canvas id="canvas"></canvas>
-  <div id="hud" hidden><span class="chip" id="cHuman">0 humans</span><span class="chip" id="cAnimal">0 animals</span><span class="chip" id="cFps">0 fps</span></div>
+  <div id="hud" hidden><span class="chip" id="cHuman">0 humans</span><span class="chip" id="cAnimal">0 animals</span><span class="chip" id="cFps">0 fps</span><span class="chip" id="cSay" hidden></span></div>
   <div id="overlay">
     <p id="msg">Point your camera at people or animals. They are drawn as stick figures instead of boxes.</p>
     <button id="start">Open camera</button>
@@ -61,9 +71,26 @@
   <button class="alt" id="sticksBtn" aria-pressed="false">Sticks only</button>
   <button class="alt" id="pauseBtn" aria-pressed="false">Pause</button>
   <button class="alt" id="fxBtn">Effect: Normal</button>
+  <button class="alt" id="chatBtn">AI chat</button>
+  <button class="alt" id="talkBtn">Talk</button>
+  <button class="alt" id="narrBtn" aria-pressed="false">Auto-narrate</button>
   <button class="alt" id="snap">Save photo</button>
   <label class="lab">Strength <input type="range" id="fxStr" min="1" max="9" value="5"></label>
 </div>
+<section id="chat" hidden>
+  <div id="chatTop">
+    <b>On-device AI chat</b>
+    <select id="aiModel" aria-label="AI model">
+      <option value="Llama-3.2-1B-Instruct">Smarter (Llama 1B, ~0.9 GB)</option>
+      <option value="Qwen2.5-0.5B-Instruct">Smaller (Qwen 0.5B, ~0.4 GB)</option>
+    </select>
+    <button class="alt" id="aiLoad">Load AI</button>
+    <label class="lab"><input type="checkbox" id="speakChk" checked> Speak</label>
+  </div>
+  <div id="aiProg">First load downloads the model once, then it is saved on your device.</div>
+  <div id="chatLog"></div>
+  <div id="chatRow"><input type="text" id="chatIn" placeholder="Ask anything…" autocomplete="off"><button id="chatSend">Send</button></div>
+</section>
 <footer>Runs fully in your browser. No video leaves your device.</footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
@@ -281,6 +308,59 @@ function fxStep(){
   fctx.putImageData(im,0,0);
 }
 
+/* ---------- voice: talk to the camera (rule-based, runs in the page) ---------- */
+const scene={humans:0,animals:[]};
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+function say(t){ $("cSay").hidden=false; $("cSay").textContent="\u{1F5E3} "+t;
+  if(!("speechSynthesis" in window)||window.noSpeak) return;
+  speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(t)); }
+function describe(){
+  const parts=[], c={};
+  if(scene.humans) parts.push(scene.humans+(scene.humans===1?" person":" people"));
+  scene.animals.forEach(n=>c[n]=(c[n]||0)+1);
+  for(const n in c) parts.push(c[n]+" "+(c[n]>1&&n!=="sheep"?n+"s":n));
+  return parts.length?"I see "+parts.join(" and ")+".":"I don't see any people or animals right now.";
+}
+function setFx(name){ let k=0; while(FXNAMES[fxMode].toLowerCase()!==name&&k++<8) $("fxBtn").click(); }
+function answer(q){
+  q=q.toLowerCase();
+  if(/night/.test(q)){ setFx("night vision"); return "Night vision is on."; }
+  if(/thermal|heat/.test(q)){ setFx("thermal view"); return "Thermal view is on. It is false color, not real heat."; }
+  if(/trail/.test(q)){ setFx("motion trails"); return "Motion trails are on."; }
+  if(/motion/.test(q)){ setFx("motion detect"); return "Motion detection is on."; }
+  if(/edge/.test(q)){ setFx("edges"); return "Edges are on."; }
+  if(/normal|no effect|turn off|reset/.test(q)){ setFx("normal"); return "Back to the normal view."; }
+  if(/stick/.test(q)&&/only/.test(q)){ $("sticksBtn").click(); return "Toggled sticks only."; }
+  if(/photo|picture|snap|save/.test(q)){ $("snap").click(); return "Saving a photo."; }
+  if(/switch|flip|front|rear|other camera/.test(q)){ $("flip").click(); return "Switching camera."; }
+  if(/how many/.test(q)&&/(people|person|human)/.test(q)) return "I see "+scene.humans+(scene.humans===1?" person.":" people.");
+  if(/how many/.test(q)&&/animal/.test(q)) return "I see "+scene.animals.length+(scene.animals.length===1?" animal.":" animals.");
+  if(/ghost|spirit|ghosts/.test(q)) return "I can't detect ghosts. I only recognize people and animals.";
+  if(/who are you|your name|hello|^hi\b|hey/.test(q)) return "I'm the Schorzen Project camera assistant, made by "+AUTHOR+". I run on your device.";
+  if(/see|look|what|describe|around|there/.test(q)) return describe();
+  return null;
+}
+function handleQuery(q){
+  window.chatAdd&&window.chatAdd("me",q);
+  const a=answer(q);
+  if(a!==null){ window.chatAdd&&window.chatAdd("ai",a); say(a); }
+  else if(window.aiReady) window.askAI(q);
+  else { const m="I can describe what I see, change effects, switch camera or save a photo. Open AI chat and tap Load AI to ask me anything."; window.chatAdd&&window.chatAdd("ai",m); say(m); }
+}
+$("talkBtn").onclick=()=>{
+  if(!SR){ const q=prompt("Voice input isn't supported in this browser. Type your question:"); if(q) handleQuery(q); return; }
+  const r=new SR(); r.lang="en-US"; r.interimResults=false; $("talkBtn").textContent="Listening\u2026";
+  r.onresult=e=>{ const q=e.results[0][0].transcript; $("cSay").hidden=false; $("cSay").textContent="\u{1F3A4} "+q; setTimeout(()=>handleQuery(q),700); };
+  r.onerror=e=>say(e.error==="not-allowed"?"Microphone permission was blocked.":"Sorry, I didn't catch that.");
+  r.onend=()=>{ $("talkBtn").textContent="Talk"; };
+  r.start();
+};
+let narrOn=false, lastSig="", lastSpoke=0;
+$("narrBtn").onclick=e=>{ narrOn=!narrOn; e.target.setAttribute("aria-pressed",narrOn); lastSig=""; if(narrOn) say("Auto narration on."); };
+setInterval(()=>{ if(!narrOn) return; const sig=describe();
+  if(sig!==lastSig&&!/don't see/.test(sig)&&Date.now()-lastSpoke>5000){ lastSig=sig; lastSpoke=Date.now(); say(sig); }
+  else if(/don't see/.test(sig)) lastSig=sig; },1500);
+
 /* ---------- main loop ---------- */
 async function loop(){
   if(!running) return;
@@ -296,6 +376,7 @@ async function loop(){
       people.forEach(drawHuman);
       for(const [id,s] of humanSmooth) if(frame-s.seen>8) humanSmooth.delete(id);
       const vis=tracks.filter(t=>t.hits>=2&&t.miss<2);
+      scene.humans=people.length; scene.animals=vis.map(t=>t.cls);
       vis.forEach(t=>drawAnimal(t,now));
       $("cHuman").textContent=people.length+(people.length===1?" human":" humans");
       $("cAnimal").textContent=vis.length+(vis.length===1?" animal":" animals");
@@ -305,6 +386,38 @@ async function loop(){
   $("cFps").textContent=Math.round(fps)+" fps";
   requestAnimationFrame(loop);
 }
+</script>
+<script type="module">
+import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.79/+esm";
+const $=id=>document.getElementById(id);
+let engine=null, busy=false; const hist=[]; window.aiReady=false; window.noSpeak=false;
+function add(role,text){ const d=document.createElement("div"); d.className="msg "+role; d.textContent=text; $("chatLog").appendChild(d); $("chatLog").scrollTop=1e9; return d; }
+window.chatAdd=add;
+$("chatBtn").onclick=()=>{ $("chat").hidden=!$("chat").hidden; };
+$("speakChk").onchange=e=>{ window.noSpeak=!e.target.checked; if(window.noSpeak) speechSynthesis.cancel(); };
+$("aiLoad").onclick=async()=>{
+  if(!navigator.gpu){ $("aiProg").textContent="This browser has no WebGPU. Try Chrome on a recent phone or computer."; return; }
+  $("aiLoad").disabled=true; $("aiProg").textContent="Starting…";
+  try{
+    let f16=false; try{ const ad=await navigator.gpu.requestAdapter(); f16=!!(ad&&ad.features.has("shader-f16")); }catch(e){}
+    const id=$("aiModel").value+(f16?"-q4f16_1-MLC":"-q4f32_1-MLC");
+    engine=await webllm.CreateMLCEngine(id,{initProgressCallback:r=>{ $("aiProg").textContent=r.text; }});
+    window.aiReady=true; $("aiProg").textContent="AI ready. It runs on your device. Small models can make mistakes.";
+    add("ai","Hi! I run fully on your device. Ask me anything, or tap Talk.");
+  }catch(e){ console.error(e); $("aiProg").textContent="Could not load the AI: "+(e.message||e); $("aiLoad").disabled=false; }
+};
+window.askAI=async q=>{
+  if(!engine||busy) return; busy=true; const out=add("ai","…");
+  const sys="You are the Schorzen Project camera assistant, made by "+AUTHOR+". You run on the user's phone. Answer in 1 to 3 short sentences. Right now the camera view: "+describe()+" Only mention the camera if the user asks about it.";
+  let text="";
+  try{
+    const chunks=await engine.chat.completions.create({messages:[{role:"system",content:sys},...hist.slice(-6),{role:"user",content:q}],stream:true,max_tokens:220,temperature:.7});
+    for await(const c of chunks){ text+=(c.choices[0]&&c.choices[0].delta.content)||""; out.textContent=text; $("chatLog").scrollTop=1e9; }
+  }catch(e){ console.error(e); text="Sorry, something went wrong."; out.textContent=text; }
+  hist.push({role:"user",content:q},{role:"assistant",content:text}); busy=false; say(text);
+};
+function send(){ const q=$("chatIn").value.trim(); if(!q) return; $("chatIn").value=""; handleQuery(q); }
+$("chatSend").onclick=send; $("chatIn").onkeydown=e=>{ if(e.key==="Enter") send(); };
 </script>
 </body>
 </html>
