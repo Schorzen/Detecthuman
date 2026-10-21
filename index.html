@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Schorzen Project</title>
+<style>
+  :root {
+    --bg: #101418;
+    --ink: #e9efe6;
+    --muted: #8d9a93;
+    --line: #c8ff3d;
+    --pet: #ff8a3d;
+    --panel: #181e24;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif; }
+  body { min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+    padding: max(16px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom)); }
+  header { text-align: center; margin: 8px 0 14px; }
+  h1 { margin: 0; font-size: clamp(1.8rem, 6vw, 3rem); letter-spacing: .02em; font-weight: 700; }
+  #author { margin: 4px 0 0; color: var(--muted); font-size: 1rem; }
+  #stage { position: relative; width: 100%; max-width: 900px; background: #000;
+    border-radius: 14px; overflow: hidden; aspect-ratio: 4 / 3; border: 1px solid #28323b; }
+  video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  video { object-fit: fill; }
+  #stage.mirror video, #stage.mirror canvas { transform: scaleX(-1); }
+  #overlay { position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 12px; text-align: center;
+    padding: 20px; background: var(--panel); }
+  #overlay p { margin: 0; color: var(--muted); max-width: 32ch; line-height: 1.45; }
+  button { font: inherit; font-weight: 700; border: 0; border-radius: 10px; cursor: pointer;
+    padding: 12px 22px; background: var(--line); color: #14200a; }
+  button.alt { background: #26313a; color: var(--ink); }
+  button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+  #bar { display: flex; gap: 10px; align-items: center; justify-content: space-between;
+    width: 100%; max-width: 900px; margin-top: 12px; }
+  #status { color: var(--muted); font-size: .92rem; }
+  #bar button { padding: 9px 16px; }
+  footer { margin-top: auto; padding-top: 18px; color: var(--muted); font-size: .85rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Schorzen Project</h1>
+  <p id="author">Your Name</p>
+</header>
+
+<div id="stage">
+  <video id="video" playsinline muted></video>
+  <canvas id="canvas"></canvas>
+  <div id="overlay">
+    <p>Point your camera at people or animals. They are drawn as stick figures instead of boxes.</p>
+    <button id="start">Open camera</button>
+  </div>
+</div>
+
+<div id="bar" hidden>
+  <span id="status">Loading models…</span>
+  <button id="flip" class="alt">Switch camera</button>
+</div>
+<footer>Everything runs in your browser. No video leaves your device.</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+<script>
+// ---- Change your name here ----
+const AUTHOR = "Your Name";
+document.getElementById("author").textContent = AUTHOR;
+
+const $ = id => document.getElementById(id);
+const video = $("video"), canvas = $("canvas"), ctx = canvas.getContext("2d");
+const stage = $("stage"), statusEl = $("status");
+const ANIMALS = new Set(["bird","cat","dog","horse","sheep","cow","elephant","bear","zebra","giraffe"]);
+let facing = "environment", stream = null, poseNet = null, objNet = null;
+let pairs = [], animals = [], frame = 0, running = false;
+
+async function startCamera() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: facing, width: { ideal: 960 }, height: { ideal: 720 } }, audio: false
+  });
+  video.srcObject = stream;
+  await video.play();
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  stage.style.aspectRatio = video.videoWidth + " / " + video.videoHeight;
+  stage.classList.toggle("mirror", facing === "user");
+}
+
+async function loadModels() {
+  await tf.ready();
+  poseNet = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, {
+    modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING,
+    enableTracking: true
+  });
+  pairs = poseDetection.util.getAdjacentPairs(poseDetection.SupportedModels.MoveNet);
+  objNet = await cocoSsd.load({ base: "lite_mobilenet_v2" });
+}
+
+$("start").onclick = async () => {
+  $("start").disabled = true;
+  $("start").textContent = "Starting…";
+  try {
+    facing = /Mobi|Android/i.test(navigator.userAgent) ? "environment" : "user";
+    await startCamera();
+    $("overlay").hidden = true;
+    $("overlay").style.display = "none";
+    $("bar").hidden = false;
+    await loadModels();
+    running = true;
+    loop();
+  } catch (e) {
+    $("start").disabled = false;
+    $("start").textContent = "Try again";
+    $("overlay").querySelector("p").textContent =
+      "Camera could not start. Allow camera access in your browser and open the page over https.";
+    $("overlay").style.display = "flex";
+    console.error(e);
+  }
+};
+
+$("flip").onclick = async () => {
+  facing = facing === "user" ? "environment" : "user";
+  try { await startCamera(); } catch (e) { console.error(e); }
+};
+
+function stroke(color, w) {
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = w; ctx.lineCap = "round"; ctx.lineJoin = "round";
+}
+function line(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+
+function drawHuman(p) {
+  const k = p.keypoints, ok = i => k[i] && k[i].score > 0.25;
+  stroke("#c8ff3d", Math.max(3, canvas.width / 200));
+  for (const [a, b] of pairs) {
+    if (ok(a) && ok(b)) line(k[a].x, k[a].y, k[b].x, k[b].y);
+  }
+  // torso spine: shoulders midpoint to hips midpoint
+  if (ok(5) && ok(6) && ok(11) && ok(12)) {
+    line((k[5].x + k[6].x) / 2, (k[5].y + k[6].y) / 2, (k[11].x + k[12].x) / 2, (k[11].y + k[12].y) / 2);
+  }
+  // head circle
+  if (ok(0)) {
+    let r = 18;
+    if (ok(3) && ok(4)) r = Math.hypot(k[3].x - k[4].x, k[3].y - k[4].y) * 0.9;
+    else if (ok(5) && ok(6)) r = Math.hypot(k[5].x - k[6].x, k[5].y - k[6].y) * 0.3;
+    ctx.beginPath(); ctx.arc(k[0].x, k[0].y, Math.max(r, 10), 0, Math.PI * 2); ctx.stroke();
+  }
+  for (const pt of k) if (pt.score > 0.25) { ctx.beginPath(); ctx.arc(pt.x, pt.y, 4, 0, 7); ctx.fill(); }
+}
+
+function drawAnimal(a) {
+  const [x, y, w, h] = a.bbox, c = a.class;
+  const lw = Math.max(3, canvas.width / 200);
+  stroke("#ff8a3d", lw);
+  const bird = c === "bird", tall = c === "giraffe";
+  const bx1 = x + w * 0.18, bx2 = x + w * 0.78, by = y + h * (bird ? 0.5 : 0.45);
+  line(bx1, by, bx2, by);                                   // spine
+  const hx = x + w * (tall ? 0.9 : 0.92), hy = y + h * (tall ? 0.08 : 0.25);
+  line(bx2, by, hx, hy);                                    // neck
+  ctx.beginPath(); ctx.arc(hx, hy, Math.max(8, Math.min(w, h) * 0.07), 0, 7); ctx.stroke(); // head
+  line(bx1, by, x + w * 0.02, by - h * 0.12);               // tail
+  const foot = y + h;
+  if (bird) {
+    line(x + w * 0.45, by, x + w * 0.45, foot);
+    line(x + w * 0.55, by, x + w * 0.55, foot);
+    line(x + w * 0.4, by, x + w * 0.62, by - h * 0.2);      // wing
+  } else {
+    for (const lx of [bx1, bx1 + w * 0.1, bx2 - w * 0.1, bx2]) line(lx, by, lx, foot); // legs
+  }
+  ctx.font = "bold " + Math.max(14, canvas.width / 45) + "px sans-serif";
+  ctx.fillText(c, x + 4, Math.max(16, y - 6));
+}
+
+async function loop() {
+  if (!running) return;
+  if (video.readyState >= 2) {
+    try {
+      const poses = await poseNet.estimatePoses(video, { maxPoses: 6, flipHorizontal: false });
+      if (frame++ % 4 === 0) {
+        const objs = await objNet.detect(video, 10, 0.5);
+        animals = objs.filter(o => ANIMALS.has(o.class));
+      }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const people = poses.filter(p => p.score === undefined || p.score > 0.2);
+      people.forEach(drawHuman);
+      animals.forEach(drawAnimal);
+      if (stage.classList.contains("mirror")) { /* canvas is mirrored by CSS with the video */ }
+      statusEl.textContent = people.length + " human" + (people.length === 1 ? "" : "s") +
+        ", " + animals.length + " animal" + (animals.length === 1 ? "" : "s");
+    } catch (e) { console.error(e); }
+  }
+  requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
