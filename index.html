@@ -68,6 +68,8 @@
   #chat .small { background:#232d36; color:var(--ink); border-radius:10px; padding:8px 12px; font-size:.85rem; }
   #chat .small:disabled { opacity:.5; }
   #aiProg { color:var(--muted); font-size:.76rem; margin:8px 0; min-height:1em; word-break:break-word; }
+  #aiBar { height:5px; background:#232d36; border-radius:3px; overflow:hidden; margin-bottom:8px; }
+  #aiBar i { display:block; height:100%; width:0; background:var(--accent); transition:width .3s; }
   #chatLog { flex:1; min-height:130px; overflow-y:auto; display:flex; flex-direction:column; gap:7px; margin-bottom:10px; }
   .msg { max-width:86%; padding:9px 12px; border-radius:14px; line-height:1.4; font-size:.93rem; white-space:pre-wrap; }
   .msg.me { align-self:flex-end; background:#2f4220; border-bottom-right-radius:4px; }
@@ -122,6 +124,7 @@
     <button class="small" id="aiLoad">Load AI</button>
   </div>
   <div id="aiProg">First load downloads the model once, then it is saved on your device.</div>
+  <div id="aiBar"><i></i></div>
   <div id="chatLog"></div>
   <div id="chatRow"><input type="text" id="chatIn" placeholder="Ask anything…" autocomplete="off"><button id="chatSend">Send</button></div>
 </section>
@@ -141,7 +144,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
 <script>
 // ---- Change your name here ----
-const AUTHOR = "Your Name";
+const AUTHOR = "Arjhay C.";
 function $(id){ return document.getElementById(id); }
 $("author").textContent = AUTHOR;
 
@@ -409,6 +412,7 @@ function handleQuery(q){
   const a=answer(q);
   if(a!==null){ window.chatAdd&&window.chatAdd("ai",a); say(a); }
   else if(window.aiReady) window.askAI(q);
+  else if(window.aiLoading){ const m="The AI is still loading ("+(window.aiPct||0)+"%). The first setup can take a few minutes. Please keep this page open."; window.chatAdd&&window.chatAdd("ai",m); say(m); }
   else { const m="I can describe what I see, change effects, switch camera or save a photo. Open AI chat and tap Load AI to ask me anything."; window.chatAdd&&window.chatAdd("ai",m); say(m); }
 }
 $("testVoice").onclick=()=>say("Hello. I can talk. Can you hear me?");
@@ -462,14 +466,15 @@ $("chatBtn").onclick=()=>{ $("chat").hidden=!$("chat").hidden; };
 $("speakChk").onchange=e=>{ window.noSpeak=!e.target.checked; if(window.noSpeak) speechSynthesis.cancel(); };
 $("aiLoad").onclick=async()=>{
   if(!navigator.gpu){ $("aiProg").textContent="This browser has no WebGPU. Try Chrome on a recent phone or computer."; return; }
-  $("aiLoad").disabled=true; $("aiProg").textContent="Starting…";
+  $("aiLoad").disabled=true; $("aiLoad").textContent="Loading…"; window.aiLoading=true; window.aiPct=0; $("aiProg").textContent="Starting…";
+  const stall=setTimeout(()=>{ if(window.aiLoading) $("aiProg").textContent+="  Still working. This can take a few minutes on phones. If it never finishes, close other tabs and try the Smaller model."; },90000);
   try{
     let f16=false; try{ const ad=await navigator.gpu.requestAdapter(); f16=!!(ad&&ad.features.has("shader-f16")); }catch(e){}
     const id=$("aiModel").value+(f16?"-q4f16_1-MLC":"-q4f32_1-MLC");
-    engine=await webllm.CreateMLCEngine(id,{initProgressCallback:r=>{ $("aiProg").textContent=r.text; }});
-    window.aiReady=true; $("aiProg").textContent="AI ready. It runs on your device. Small models can make mistakes.";
+    engine=await webllm.CreateMLCEngine(id,{initProgressCallback:r=>{ $("aiProg").textContent=r.text; window.aiPct=Math.round((r.progress||0)*100); $("aiBar").firstElementChild.style.width=window.aiPct+"%"; }});
+    clearTimeout(stall); window.aiLoading=false; window.aiReady=true; $("aiLoad").textContent="Ready"; $("aiBar").firstElementChild.style.width="100%"; $("aiProg").textContent="AI ready. It runs on your device. Small models can make mistakes.";
     add("ai","Hi! I run fully on your device. Ask me anything, or tap Talk.");
-  }catch(e){ console.error(e); $("aiProg").textContent="Could not load the AI: "+(e.message||e); $("aiLoad").disabled=false; }
+  }catch(e){ console.error(e); clearTimeout(stall); window.aiLoading=false; $("aiLoad").textContent="Load AI"; $("aiProg").textContent="Could not load the AI: "+(e.message||e); $("aiLoad").disabled=false; }
 };
 window.askAI=async q=>{
   if(!engine||busy) return; busy=true; const out=add("ai","…");
