@@ -312,26 +312,27 @@ function fxStep(){
 /* ---------- voice: talk to the camera (rule-based, runs in the page) ---------- */
 const scene={humans:0,animals:[]};
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-let voiceUnlocked=false, pickedVoice=null; const _utts=[];
+let pickedVoice=null; const _utts=[];
 function pickVoice(){ const vs=speechSynthesis.getVoices();
   pickedVoice=vs.find(v=>/^en/i.test(v.lang)&&v.localService)||vs.find(v=>/^en/i.test(v.lang))||vs[0]||null; }
 if("speechSynthesis" in window){ pickVoice(); speechSynthesis.onvoiceschanged=pickVoice; }
-function unlockVoice(){ if(voiceUnlocked||!("speechSynthesis" in window)) return; voiceUnlocked=true;
-  try{ const u=new SpeechSynthesisUtterance(" "); u.volume=0; speechSynthesis.speak(u); }catch(e){} }
-document.addEventListener("pointerdown",unlockVoice,{once:true});
 function say(t){
-  $("cSay").hidden=false; $("cSay").textContent="\u{1F5E3} "+t;
+  const shown="\u{1F5E3} "+t; $("cSay").hidden=false; $("cSay").textContent=shown;
   if(window.noSpeak) return;
-  if(!("speechSynthesis" in window)){ $("cSay").textContent+=" (this browser can't speak)"; return; }
-  try{
-    speechSynthesis.resume();
-    if(speechSynthesis.speaking||speechSynthesis.pending) speechSynthesis.cancel();
-    const parts=t.match(/[^.!?\n]+[.!?]*/g)||[t];
-    setTimeout(()=>{ for(const part of parts){ const u=new SpeechSynthesisUtterance(part.trim()); if(!u.text) continue;
-      u.lang=(pickedVoice&&pickedVoice.lang)||"en-US"; if(pickedVoice) u.voice=pickedVoice; u.rate=1; u.volume=1;
-      u.onerror=ev=>{ if(ev.error!=="canceled"&&ev.error!=="interrupted") $("cSay").textContent="\u{1F507} Voice error: "+ev.error+". Check media volume and silent mode."; };
-      _utts.push(u); u.onend=()=>{ const i=_utts.indexOf(u); if(i>-1) _utts.splice(i,1); };
-      speechSynthesis.speak(u); } },80);
+  if(!("speechSynthesis" in window)){ $("cSay").textContent="\u{1F507} This browser can't speak. Try Chrome or Safari."; return; }
+  const run=()=>{
+    const parts=t.match(/[^.!?\n]+[.!?]*/g)||[t]; let started=false;
+    parts.forEach((part,i)=>{ const u=new SpeechSynthesisUtterance(part.trim()); if(!u.text) return;
+      if(pickedVoice){ u.voice=pickedVoice; u.lang=pickedVoice.lang; } else u.lang="en-US";
+      u.rate=1; u.volume=1; if(i===0) u.onstart=()=>{ started=true; };
+      u.onerror=ev=>{ if(ev.error!=="canceled"&&ev.error!=="interrupted") $("cSay").textContent="\u{1F507} Voice error: "+ev.error; };
+      _utts.push(u); u.onend=()=>{ const k=_utts.indexOf(u); if(k>-1) _utts.splice(k,1); };
+      speechSynthesis.speak(u); });
+    setTimeout(()=>{ if(!started&&$("cSay").textContent===shown)
+      $("cSay").textContent="\u{1F507} Speech didn't start ("+speechSynthesis.getVoices().length+" voices found). Turn up media volume and make sure a Text-to-speech engine is enabled in your phone settings."; },2500);
+  };
+  try{ speechSynthesis.resume();
+    if(speechSynthesis.speaking||speechSynthesis.pending){ speechSynthesis.cancel(); setTimeout(run,120); } else run();
   }catch(e){ console.error(e); }
 }
 function describe(){
