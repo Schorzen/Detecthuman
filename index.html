@@ -73,6 +73,7 @@
   <button class="alt" id="fxBtn">Effect: Normal</button>
   <button class="alt" id="chatBtn">AI chat</button>
   <button class="alt" id="talkBtn">Talk</button>
+  <button class="alt" id="testVoice">Test voice</button>
   <button class="alt" id="narrBtn" aria-pressed="false">Auto-narrate</button>
   <button class="alt" id="snap">Save photo</button>
   <label class="lab">Strength <input type="range" id="fxStr" min="1" max="9" value="5"></label>
@@ -311,9 +312,28 @@ function fxStep(){
 /* ---------- voice: talk to the camera (rule-based, runs in the page) ---------- */
 const scene={humans:0,animals:[]};
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-function say(t){ $("cSay").hidden=false; $("cSay").textContent="\u{1F5E3} "+t;
-  if(!("speechSynthesis" in window)||window.noSpeak) return;
-  speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(t)); }
+let voiceUnlocked=false, pickedVoice=null; const _utts=[];
+function pickVoice(){ const vs=speechSynthesis.getVoices();
+  pickedVoice=vs.find(v=>/^en/i.test(v.lang)&&v.localService)||vs.find(v=>/^en/i.test(v.lang))||vs[0]||null; }
+if("speechSynthesis" in window){ pickVoice(); speechSynthesis.onvoiceschanged=pickVoice; }
+function unlockVoice(){ if(voiceUnlocked||!("speechSynthesis" in window)) return; voiceUnlocked=true;
+  try{ const u=new SpeechSynthesisUtterance(" "); u.volume=0; speechSynthesis.speak(u); }catch(e){} }
+document.addEventListener("pointerdown",unlockVoice,{once:true});
+function say(t){
+  $("cSay").hidden=false; $("cSay").textContent="\u{1F5E3} "+t;
+  if(window.noSpeak) return;
+  if(!("speechSynthesis" in window)){ $("cSay").textContent+=" (this browser can't speak)"; return; }
+  try{
+    speechSynthesis.resume();
+    if(speechSynthesis.speaking||speechSynthesis.pending) speechSynthesis.cancel();
+    const parts=t.match(/[^.!?\n]+[.!?]*/g)||[t];
+    setTimeout(()=>{ for(const part of parts){ const u=new SpeechSynthesisUtterance(part.trim()); if(!u.text) continue;
+      u.lang=(pickedVoice&&pickedVoice.lang)||"en-US"; if(pickedVoice) u.voice=pickedVoice; u.rate=1; u.volume=1;
+      u.onerror=ev=>{ if(ev.error!=="canceled"&&ev.error!=="interrupted") $("cSay").textContent="\u{1F507} Voice error: "+ev.error+". Check media volume and silent mode."; };
+      _utts.push(u); u.onend=()=>{ const i=_utts.indexOf(u); if(i>-1) _utts.splice(i,1); };
+      speechSynthesis.speak(u); } },80);
+  }catch(e){ console.error(e); }
+}
 function describe(){
   const parts=[], c={};
   if(scene.humans) parts.push(scene.humans+(scene.humans===1?" person":" people"));
@@ -347,6 +367,7 @@ function handleQuery(q){
   else if(window.aiReady) window.askAI(q);
   else { const m="I can describe what I see, change effects, switch camera or save a photo. Open AI chat and tap Load AI to ask me anything."; window.chatAdd&&window.chatAdd("ai",m); say(m); }
 }
+$("testVoice").onclick=()=>say("Hello. I can talk. Can you hear me?");
 $("talkBtn").onclick=()=>{
   if(!SR){ const q=prompt("Voice input isn't supported in this browser. Type your question:"); if(q) handleQuery(q); return; }
   const r=new SR(); r.lang="en-US"; r.interimResults=false; $("talkBtn").textContent="Listening\u2026";
