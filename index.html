@@ -17,7 +17,12 @@
   #stage { position:relative; width:100%; max-width:920px; aspect-ratio:4/3; background:#000;
     border:1px solid var(--edge); border-radius:14px; overflow:hidden; }
   video, canvas { position:absolute; inset:0; width:100%; height:100%; }
-  #stage.mirror video { transform:scaleX(-1); }
+  #stage.mirror video, #stage.mirror #fx { transform:scaleX(-1); }
+  #fx { display:none; image-rendering:auto; }
+  #stage.fxon #fx { display:block; }
+  #stage.fxon video { opacity:0; }
+  #stage.sticks #fx { opacity:0; }
+  .lab { color:var(--muted); font-size:.85rem; display:flex; gap:6px; align-items:center; }
   #stage.sticks video { opacity:0; }
   #overlay { position:absolute; inset:0; z-index:3; display:flex; flex-direction:column; align-items:center;
     justify-content:center; gap:12px; text-align:center; padding:20px; background:var(--panel); }
@@ -31,10 +36,6 @@
   button.alt[aria-pressed="true"] { background:#3b4a2a; outline:1px solid var(--accent); }
   button:focus-visible { outline:3px solid #fff; outline-offset:2px; }
   #bar { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; width:100%; max-width:920px; margin-top:12px; }
-  #stage.ghost video { filter:grayscale(.75) contrast(1.2) brightness(1.15) hue-rotate(170deg) saturate(.7); }
-  #stage.ghost::after { content:""; position:absolute; inset:0; z-index:1; pointer-events:none;
-    background:radial-gradient(ellipse at center,transparent 40%,rgba(0,0,0,.7) 100%),
-    repeating-linear-gradient(0deg,rgba(255,255,255,.035) 0 1px,transparent 1px 3px); }
   footer { margin-top:auto; padding-top:16px; color:var(--muted); font-size:.82rem; text-align:center; }
 </style>
 </head>
@@ -46,8 +47,9 @@
 
 <div id="stage">
   <video id="video" playsinline muted></video>
+  <canvas id="fx"></canvas>
   <canvas id="canvas"></canvas>
-  <div id="hud" hidden><span class="chip" id="cHuman">0 humans</span><span class="chip" id="cAnimal">0 animals</span><span class="chip" id="cFps">0 fps</span><span class="chip" id="cEmf" hidden>EMF 0.0</span></div>
+  <div id="hud" hidden><span class="chip" id="cHuman">0 humans</span><span class="chip" id="cAnimal">0 animals</span><span class="chip" id="cFps">0 fps</span></div>
   <div id="overlay">
     <p id="msg">Point your camera at people or animals. They are drawn as stick figures instead of boxes.</p>
     <button id="start">Open camera</button>
@@ -58,8 +60,9 @@
   <button class="alt" id="flip">Switch camera</button>
   <button class="alt" id="sticksBtn" aria-pressed="false">Sticks only</button>
   <button class="alt" id="pauseBtn" aria-pressed="false">Pause</button>
-  <button class="alt" id="ghostBtn" aria-pressed="false">Ghost mode</button>
+  <button class="alt" id="fxBtn">Effect: Normal</button>
   <button class="alt" id="snap">Save photo</button>
+  <label class="lab">Strength <input type="range" id="fxStr" min="1" max="9" value="5"></label>
 </div>
 <footer>Runs fully in your browser. No video leaves your device.</footer>
 
@@ -123,7 +126,7 @@ $("snap").onclick = ()=>{
   const g=c.getContext("2d"); g.fillStyle="#000"; g.fillRect(0,0,c.width,c.height);
   if(!stage.classList.contains("sticks")){
     g.save(); if(mirror()){ g.translate(c.width,0); g.scale(-1,1); }
-    g.drawImage(video,0,0,c.width,c.height); g.restore();
+    g.drawImage(fxMode?fx:video,0,0,c.width,c.height); g.restore();
   }
   g.drawImage(canvas,0,0);
   g.fillStyle="rgba(255,255,255,.85)"; g.font="bold "+Math.round(c.width/38)+"px sans-serif";
@@ -225,81 +228,57 @@ function drawAnimal(t,now){
   label(t.cls,x+w/2,Math.max(16,y-8),color);
 }
 
-/* ---------- ghost mode: flags unexplained motion (entertainment only) ---------- */
-let ghostOn=false, prevG=null, ghosts=[], nextGhost=1, emf=0;
-const GW=48, GH=36, mc=document.createElement("canvas"); mc.width=GW; mc.height=GH;
-const mctx=mc.getContext("2d",{willReadFrequently:true});
-$("ghostBtn").onclick = e=>{ ghostOn=!ghostOn; stage.classList.toggle("ghost",ghostOn);
-  e.target.setAttribute("aria-pressed",ghostOn); $("cEmf").hidden=!ghostOn; prevG=null; ghosts=[]; };
+/* ---------- camera effects: real processing of the live camera pixels ---------- */
+const fx=$("fx"), fctx=fx.getContext("2d",{willReadFrequently:true}), FW=320;
+const FXNAMES=["Normal","Night vision","Thermal view","Motion trails","Motion detect","Edges"];
+let fxMode=0, fxStr=5, fxBg=null, fxEcho=null;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const PAL=(()=>{ const st=[[0,0,0,20],[.25,80,0,120],[.5,200,30,60],[.75,255,160,0],[1,255,255,200]], p=new Uint8Array(768);
+  for(let i=0;i<256;i++){ const t=i/255; let k=1; while(k<st.length-1&&t>st[k][0]) k++;
+    const a=st[k-1], b=st[k], f=(t-a[0])/(b[0]-a[0]);
+    for(let c=0;c<3;c++) p[i*3+c]=a[c+1]+(b[c+1]-a[c+1])*f; }
+  return p; })();
 
-function motionBlobs(){
-  mctx.drawImage(video,0,0,GW,GH);
-  const d=mctx.getImageData(0,0,GW,GH).data, n=GW*GH, g=new Float32Array(n);
-  for(let i=0;i<n;i++) g[i]=.3*d[i*4]+.59*d[i*4+1]+.11*d[i*4+2];
-  if(!prevG){ prevG=g; return []; }
-  const m=new Uint8Array(n); let moved=0;
-  for(let i=0;i<n;i++){ if(Math.abs(g[i]-prevG[i])>16){ m[i]=1; moved++; } prevG[i]=prevG[i]*.5+g[i]*.5; }
-  if(moved>n*.4) return [];                       // camera itself is moving
-  const out=[], sx=canvas.width/GW, sy=canvas.height/GH;
-  for(let s=0;s<n;s++){ if(m[s]!==1) continue;
-    const st=[s]; m[s]=2; let c=0,x0=GW,y0=GH,x1=0,y1=0;
-    while(st.length){ const p=st.pop(), x=p%GW, y=(p/GW)|0; c++;
-      x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y);
-      for(const q of [p-1,p+1,p-GW,p+GW]) if(q>=0&&q<n&&m[q]===1&&Math.abs((q%GW)-x)<=1){ m[q]=2; st.push(q); } }
-    if(c>=7) out.push({x:(x0+x1+1)/2*sx,y:(y0+y1+1)/2*sy,w:(x1-x0+1)*sx,h:(y1-y0+1)*sy}); }
-  return out;
-}
-function knownRects(people,animals){
-  const r=[];
-  for(const s of people){ const k=s.kp.filter(p=>p.s>.3); if(k.length<3) continue;
-    const xs=k.map(p=>p.x), ys=k.map(p=>p.y), x0=Math.min(...xs), x1=Math.max(...xs), y0=Math.min(...ys), y1=Math.max(...ys);
-    const px=(x1-x0)*.25, py=(y1-y0)*.25; r.push([x0-px,y0-py,x1+px,y1+py]); }
-  for(const t of animals){ const [x,y,w,h]=t.box; r.push([x-w*.15,y-h*.15,x+w*1.15,y+h*1.15]); }
-  return r;
-}
-function ghostStep(people,animals,now){
-  const known=knownRects(people,animals);
-  const blobs=motionBlobs().filter(b=>!known.some(r=>b.x>r[0]&&b.x<r[2]&&b.y>r[1]&&b.y<r[3]));
-  for(const g of ghosts) g.seen=false;
-  for(const b of blobs){
-    let best=null,bd=Math.max(b.w,b.h)*1.2;
-    for(const g of ghosts){ const dd=Math.hypot(g.x-b.x,g.y-b.y); if(dd<bd){bd=dd;best=g;} }
-    if(best){ best.trail.push([best.x,best.y]); if(best.trail.length>14) best.trail.shift();
-      best.x+=(b.x-best.x)*.35; best.y+=(b.y-best.y)*.35; best.w+=(b.w-best.w)*.3; best.h+=(b.h-best.h)*.3;
-      best.age++; best.life=14; best.seen=true; }
-    else ghosts.push({id:nextGhost++,x:b.x,y:b.y,w:b.w,h:b.h,age:1,life:14,trail:[],seen:true,conf:30+Math.floor(Math.random()*60)});
+$("fxBtn").onclick = e=>{ fxMode=(fxMode+1)%FXNAMES.length; fxBg=null; fxEcho=null;
+  e.target.textContent="Effect: "+FXNAMES[fxMode]; stage.classList.toggle("fxon",fxMode>0); };
+$("fxStr").oninput = e=>{ fxStr=+e.target.value; };
+
+function fxStep(){
+  if(!fxMode||video.readyState<2||!video.videoWidth) return;
+  const H=Math.round(FW*video.videoHeight/video.videoWidth);
+  if(fx.width!==FW||fx.height!==H){ fx.width=FW; fx.height=H; fxBg=null; fxEcho=null; }
+  fctx.drawImage(video,0,0,FW,H);
+  const im=fctx.getImageData(0,0,FW,H), d=im.data, n=FW*H, lum=new Float32Array(n);
+  let mean=0, lo=255, hi=0;
+  for(let i=0;i<n;i++){ const v=.3*d[i*4]+.59*d[i*4+1]+.11*d[i*4+2]; lum[i]=v; mean+=v; if(v<lo)lo=v; if(v>hi)hi=v; }
+  mean/=n;
+  if(fxMode===1){            // night vision: adaptive gain, amplified sensor noise, green phosphor tint
+    const gain=clamp(130/(mean+8),1,7)*(.6+fxStr*.1), nz=18+gain*7;
+    for(let i=0;i<n;i++){ const v=clamp(lum[i]*gain+(Math.random()-.5)*nz,0,255), o=i*4;
+      d[o]=v*.12; d[o+1]=v; d[o+2]=v*.22; }
+  } else if(fxMode===2){     // thermal-style false color from brightness (not real heat)
+    const r=Math.max(20,hi-lo);
+    for(let i=0;i<n;i++){ const k=clamp(((lum[i]-lo)/r)*255,0,255)|0, o=i*4;
+      d[o]=PAL[k*3]; d[o+1]=PAL[k*3+1]; d[o+2]=PAL[k*3+2]; }
+  } else if(fxMode===3){     // motion trails: temporal echo of previous frames
+    if(!fxEcho){ fxEcho=new Float32Array(n*3); for(let i=0;i<n;i++) for(let c=0;c<3;c++) fxEcho[i*3+c]=d[i*4+c]; }
+    const dec=.7+fxStr*.025;
+    for(let i=0;i<n;i++) for(let c=0;c<3;c++){ const k=i*3+c, v=d[i*4+c];
+      fxEcho[k]=fxEcho[k]*dec+v*(1-dec); d[i*4+c]=clamp(v*.45+fxEcho[k]*.7,0,255); }
+  } else if(fxMode===4){     // motion detect: difference from a slow background model, shown in color
+    if(!fxBg) fxBg=lum.slice();
+    const sc=.6+fxStr*.35;
+    for(let i=0;i<n;i++){ const df=Math.abs(lum[i]-fxBg[i]); fxBg[i]+=(lum[i]-fxBg[i])*.08;
+      const k=clamp(df*sc*4,0,255)|0, o=i*4, g=lum[i]*.35;
+      d[o]=clamp(g+PAL[k*3],0,255); d[o+1]=clamp(g+PAL[k*3+1],0,255); d[o+2]=clamp(g+PAL[k*3+2],0,255); }
+  } else {                   // edges: Sobel filter
+    const s=.4+fxStr*.25;
+    for(let y=1;y<H-1;y++) for(let x=1;x<FW-1;x++){ const i=y*FW+x;
+      const gx=-lum[i-FW-1]-2*lum[i-1]-lum[i+FW-1]+lum[i-FW+1]+2*lum[i+1]+lum[i+FW+1];
+      const gy=-lum[i-FW-1]-2*lum[i-FW]-lum[i-FW+1]+lum[i+FW-1]+2*lum[i+FW]+lum[i+FW+1];
+      const v=clamp(Math.hypot(gx,gy)*s,0,255), o=i*4; d[o]=v*.3; d[o+1]=v; d[o+2]=v; }
   }
-  for(const g of ghosts) if(!g.seen) g.life--;
-  ghosts=ghosts.filter(g=>g.life>0).slice(-5);
-  let power=0;
-  for(const g of ghosts){
-    if(g.age<8) continue;                            // must persist before it "appears"
-    const a=Math.min(1,(g.age-7)/18)*Math.min(1,g.life/8)*(.75+.25*Math.sin(now/90+g.id));
-    power+=a; drawGhost(g,a,now);
-  }
-  emf += ((power? 2+power*3+Math.random()*1.4 : .1+Math.random()*.3) - emf)*.2;
-  $("cEmf").textContent="EMF "+emf.toFixed(1);
-}
-function drawGhost(g,a,now){
-  const hh=Math.min(canvas.height*.55,Math.max(canvas.height*.18,g.h*1.4)), ww=hh*.55;
-  const cx=g.x+Math.sin(now/600+g.id)*ww*.05, top=g.y-hh/2;
-  ctx.save(); ctx.shadowBlur=0;
-  g.trail.forEach((p,i)=>{ ctx.globalAlpha=a*.05*(i+1)/g.trail.length;     // fading trail
-    ctx.fillStyle="#bfe4ff"; ctx.beginPath(); ctx.ellipse(mx(p[0]),p[1],ww*.3,hh*.4,0,0,7); ctx.fill(); });
-  ctx.globalAlpha=a*.85; ctx.shadowColor="#9fd8ff"; ctx.shadowBlur=30;
-  const gr=ctx.createLinearGradient(0,top,0,top+hh);
-  gr.addColorStop(0,"rgba(235,248,255,.8)"); gr.addColorStop(.6,"rgba(190,225,255,.4)"); gr.addColorStop(1,"rgba(190,225,255,0)");
-  ctx.fillStyle=gr; ctx.beginPath();
-  ctx.moveTo(mx(cx-ww*.5),top+hh*.38);
-  ctx.bezierCurveTo(mx(cx-ww*.5),top-hh*.04,mx(cx+ww*.5),top-hh*.04,mx(cx+ww*.5),top+hh*.38);
-  for(let i=0;i<=8;i++){ const x=cx+ww*.5-ww*i/8; ctx.lineTo(mx(x),top+hh+Math.sin(now/220+i*1.3+g.id)*hh*.045); }
-  ctx.closePath(); ctx.fill();
-  ctx.shadowBlur=0; ctx.fillStyle="rgba(5,12,20,.8)";                        // hollow eyes + mouth
-  const ey=top+hh*.2, er=ww*.07;
-  ctx.beginPath(); ctx.ellipse(mx(cx-ww*.15),ey,er,er*1.5,0,0,7); ctx.ellipse(mx(cx+ww*.15),ey,er,er*1.5,0,0,7); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(mx(cx),ey+hh*.1,er*.8,er*1.8*(1+.4*Math.sin(now/300)),0,0,7); ctx.fill();
-  ctx.restore();
-  ctx.save(); ctx.globalAlpha=a; label("UNKNOWN ENTITY "+g.conf+"%",cx,Math.max(18,top-8),"#bfe4ff"); ctx.restore();
+  fctx.putImageData(im,0,0);
 }
 
 /* ---------- main loop ---------- */
@@ -307,6 +286,7 @@ async function loop(){
   if(!running) return;
   const now=performance.now();
   if(!paused && video.readyState>=2){
+    fxStep();
     try{
       const poses = await poseNet.estimatePoses(video,{maxPoses:6,flipHorizontal:false});
       if(frame%3===0){ const o=await objNet.detect(video,12,0.45); updateTracks(o.filter(d=>ANIMALS.has(d.class))); }
@@ -317,7 +297,6 @@ async function loop(){
       for(const [id,s] of humanSmooth) if(frame-s.seen>8) humanSmooth.delete(id);
       const vis=tracks.filter(t=>t.hits>=2&&t.miss<2);
       vis.forEach(t=>drawAnimal(t,now));
-      if(ghostOn) ghostStep(people,vis,now);
       $("cHuman").textContent=people.length+(people.length===1?" human":" humans");
       $("cAnimal").textContent=vis.length+(vis.length===1?" animal":" animals");
     }catch(e){ console.error(e); }
